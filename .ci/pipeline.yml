@@ -1,0 +1,94 @@
+---
+jobs:
+  # This is the main job. It will build and deploy an image to test
+  # on every merge to master if the tests pass
+  - name: build-image
+    plan:
+    - get: source
+      trigger: true
+    - task: build-image
+      privileged: true
+      config:
+        platform: linux
+        image_resource:
+          type: registry-image
+          source:
+            repository: concourse/oci-build-task
+        inputs:
+        - name: source
+          path: .
+        outputs:
+        - name: image
+        run:
+          path: build
+    - put: docker-image
+      params:
+        image: image/image.tar 
+
+  - name: build-pullrequest
+    plan:
+    - get: pull-request
+      trigger: true
+    - task: build-image
+      privileged: true
+      config:
+        platform: linux
+        image_resource:
+          type: registry-image
+          source:
+            repository: concourse/oci-build-task
+        inputs:
+        - name: pull-request
+          path: .
+        outputs:
+        - name: image
+        run:
+          path: build
+    - put: docker-pr-image
+      params:
+        image: image/image.tar 
+
+# For resources that are not part of the standard Concourse deployment or if you want to
+# use a newer version of the resource you need to define it here.
+resource_types:
+- name: pull-request
+  type: docker-image
+  source:
+    repository: teliaoss/github-pr-resource
+
+resources:
+- name: docker-image
+  type: registry-image
+  source:
+    # This should be set to 'engineering/<IMAGENAME>'
+    repository: engineering/concourse-slack-notifier
+    tag: latest
+    aws_role_arn: ((ecr-role-arn))
+    aws_region: ((ecr-region))
+    aws_access_key_id: ((ecr-access-key-id))
+    aws_secret_access_key: ((ecr-secret-access-key))
+
+- name: docker-pr-image
+  type: registry-image
+  source:
+    # This should be set to 'engineering/<IMAGENAME>'
+    repository: engineering/concourse-slack-notifier
+    tag: pullrequest-latest
+    aws_role_arn: ((ecr-role-arn))
+    aws_region: ((ecr-region))
+    aws_access_key_id: ((ecr-access-key-id))
+    aws_secret_access_key: ((ecr-secret-access-key))
+
+- name: pull-request
+  type: pull-request
+  check_every: 5m
+  source:
+    repository: gozego/concourse-slack-notifier
+    access_token: ((github-access-token))
+
+- name: source
+  type: git
+  source:
+    uri: git@github.com:gozego/concourse-slack-notifier.git
+    branch: main
+    private_key: ((git-private-key))
